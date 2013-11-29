@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# if [ ! "`whoami`" = "root" ]
-# then
-#   echo "Please run as root."
-#   exit 1
-# fi
+if [ ! "`whoami`" = "root" ]
+then
+  echo "Please run as root."
+  exit 1
+fi
 
 # Usage: checkInstalled php5
 # return 0 if not installed
@@ -18,7 +18,8 @@ checkInstalled() {
 # Usage: aptInstall php5
 aptInstall() {
   apt-get update
-  apt-get install $1 --yes
+  apt-get install "$@" --yes
+  apt-get clean
 }
 
 if ! checkInstalled dialog; then
@@ -45,7 +46,7 @@ mail() {
   mailInstall() {
     clear
     aptInstall ssmtp
-    echo "Press any key..."
+    echo "Press enter..."
     read
   }
   
@@ -79,21 +80,40 @@ www() {
   wwwInstall() {
     clear
     aptInstall nginx php5 php5-mysql php5-sqlite php5-curl php-pear php5-gd php5-imagick php5-imap php5-mcrypt php5-xmlrpc php5-xsl php5-fpm php-apc
-    echo "Press any key..."
+    
+    cat >> /etc/php5/fpm/php.ini <<add
+apc.enabled=1
+apc.shm_size=30M
+add
+
+    cores=$( awk -F: '/model name/ {core++} END {print core}' /proc/cpuinfo )
+    sed -i "s/worker_processes .*;/worker_processes $cores;/g" /etc/nginx/nginx.conf
+    sed -i "s/# server_tokens off;/server_tokens off;/g" /etc/nginx/nginx.conf
+    
+    sed -i "s/;emergency_restart_threshold = 0/emergency_restart_threshold = 1/g" /etc/php5/fpm/php-fpm.conf
+    sed -i "s/;emergency_restart_interval = 0/emergency_restart_interval = 30/g" /etc/php5/fpm/php-fpm.conf
+    
+    echo "Press enter..."
     read
+  }
+  
+  wwwCreate() {
+    
   }
   
   while true
   do
     dialog --clear --nocancel --title "Web Server" \
-    --menu "açıklama yaz" 0 0 4 \
+    --menu "This will use NGINX and PHP Fast Process Manager" 0 0 4 \
     Install "Instal nginx and php" \
+    Add "Create a new hosting" \
     Exit "Exit to main menu" 2>"${INPUT}"
     
     selected=$(<"${INPUT}")
     
     case $selected in
       Install) wwwInstall;;
+      Add) wwwCreate;;
       Exit) clear; break;;
     esac
   done
