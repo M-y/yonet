@@ -63,7 +63,7 @@ mail() {
     --menu "sSMTP will create /usr/sbin/sendmail. Your applications like PHP can send mail with this. You can't receive mail. Only send." 0 0 3 \
     Install "Instal sSMTP" \
     Config "Configure sSMTP" \
-    Exit "Exit to main menu" 2>"${INPUT}"
+    Exit "Exit to install menu" 2>"${INPUT}"
     
     selected=$(<"${INPUT}")
     
@@ -75,9 +75,9 @@ mail() {
   done
 }
 
-###############
+##############
 # Web Server #
-###############
+##############
 www() {
   wwwInstall() {
     clear
@@ -95,6 +95,8 @@ add
     sed -i "s/;emergency_restart_threshold = 0/emergency_restart_threshold = 1/g" /etc/php5/fpm/php-fpm.conf
     sed -i "s/;emergency_restart_interval = 0/emergency_restart_interval = 30/g" /etc/php5/fpm/php-fpm.conf
     
+    /etc/init.d/php5-fpm restart
+    /etc/init.d/nginx restart
     echo "Press enter..."
     read
   }
@@ -102,14 +104,95 @@ add
   while true
   do
     dialog --clear --nocancel --title "Web Server" \
-    --menu "This will use NGINX and PHP Fast Process Manager" 0 0 3 \
+    --menu "This will use NGINX and PHP Fast Process Manager" 0 0 2 \
     Install "Instal nginx and php" \
-    Exit "Exit to main menu" 2>"${INPUT}"
+    Exit "Exit to install menu" 2>"${INPUT}"
     
     selected=$(<"${INPUT}")
     
     case $selected in
       Install) wwwInstall;;
+      Exit) clear; break;;
+    esac
+  done
+}
+
+##############
+# SQL Server #
+##############
+sql() {
+  sqlInstall() {
+    clear
+    aptInstall mysql-server
+    
+    cat > /etc/mysql/my.cnf <<END
+[client]
+port		= 3306
+socket		= /var/run/mysqld/mysqld.sock
+
+[mysqld_safe]
+socket		= /var/run/mysqld/mysqld.sock
+nice		= 0
+
+[mysqld]
+user		= mysql
+pid-file	= /var/run/mysqld/mysqld.pid
+socket		= /var/run/mysqld/mysqld.sock
+port		= 3306
+basedir		= /usr
+datadir		= /var/lib/mysql
+tmpdir		= /tmp
+lc-messages-dir	= /usr/share/mysql
+skip-external-locking
+bind-address		= 127.0.0.1
+key_buffer = 1M
+max_allowed_packet = 16M
+thread_stack = 64K
+thread_cache_size = 1
+myisam-recover = BACKUP
+max_connections = 25
+table_cache = 256
+query_cache_limit = 1M
+query_cache_size = 16M
+skip-innodb
+query_cache_min_res_unit=0
+tmp_table_size = 1M
+max_heap_table_size = 1M
+concurrent_insert = 2
+sort_buffer_size = 64K
+read_buffer_size = 256K
+read_rnd_buffer_size = 256K
+net_buffer_length = 2K
+expire_logs_days = 10
+max_binlog_size = 100M
+[mysqldump]
+quick
+quote-names
+[mysql]
+[isamchk]
+key_buffer		= 16M
+!includedir /etc/mysql/conf.d/
+END
+    
+    dialog --msgbox "Now running mysql_secure_installation. Enter your mysql root password if asked." 7 50
+    mysql_secure_installation
+    
+    /etc/init.d/mysql restart
+    echo "Press enter..."
+    read
+  }
+  
+  while true
+  do
+    dialog --clear --nocancel --title "SQL Server" \
+    --menu "" 0 0 2 \
+    Install "Instal mysql server" \
+    Exit "Exit to install menu" 2>"${INPUT}"
+    
+    selected=$(<"${INPUT}")
+    
+    case $selected in
+      Install) sqlInstall;;
       Exit) clear; break;;
     esac
   done
@@ -122,8 +205,9 @@ installServer() {
   while true
   do
     dialog --clear --nocancel --title "Install server software" \
-    --menu "Enter each menu, install and configure software" 0 0 3 \
+    --menu "Enter each menu, install and configure software" 0 0 4 \
     WWW "Web server" \
+    Sql "Database server" \
     Mail "Mail server" \
     Exit "Exit to main menu" 2>"${INPUT}"
     
@@ -131,6 +215,7 @@ installServer() {
     
     case $selected in
       WWW) www;;
+      Sql) sql;;
       Mail) mail;;
       Exit) clear; break;;
     esac
@@ -215,6 +300,33 @@ pm.max_spare_servers = 3
 pm.max_requests = 200
 txt
     
+  dialog --yesno "Do you want to create a database for this user?" 7 40
+  if [ $? -eq 0 ]; then
+    dialog --nocancel --inputbox "MySql root password" 10 40 2>$OUTPUT
+    mysqlRootPass=$(<$OUTPUT)
+    dialog --nocancel --inputbox "Database name" 10 40 2>$OUTPUT
+    databaseName=$(<$OUTPUT)
+    dialog --nocancel --inputbox "Username" 10 40 2>$OUTPUT
+    username=$(<$OUTPUT)
+    dialog --nocancel --inputbox "Password" 10 40 2>$OUTPUT
+    password=$(<$OUTPUT)
+    
+    clear
+    mysql -v -u root -p"$mysqlRootPass" mysql -e "CREATE DATABASE $databaseName; GRANT ALL ON  $databaseName.* TO $username@localhost IDENTIFIED BY '$password';FLUSH PRIVILEGES;"
+    echo "Press enter..."
+    read
+    
+    dialog --yesno "Do you want to import a .sql file to this database?" 7 40
+    if [ $? -eq 0 ]; then
+      dialog --nocancel --title "Type your location or use arrow keys and spacebar to select" --fselect / 10 50 2>$OUTPUT
+      sqlFile=$(<$OUTPUT)
+      clear
+      mysql -u root -p"$mysqlRootPass" "$databaseName" < "$sqlFile"
+      echo "Press enter..."
+      read
+    fi
+  fi
+  
   clear
   /etc/init.d/php5-fpm restart
   /etc/init.d/nginx restart
@@ -235,17 +347,36 @@ OUTPUT="/tmp/output"
 while true
 do
   info="nginx "
-  if [ "$(pidof nginx)" ]; then
-    info+="\Z2running\Z0"
+  if ! checkInstalled nginx; then
+    info+="\Z1not installed\Z0"
   else
-    info+="\Z1not running\Z0"
+    if [ "$(pidof nginx)" ]; then
+      info+="\Z2running\Z0"
+    else
+      info+="\Z1not running\Z0"
+    fi
   fi
   
   info+=" | php5-fpm: "
-  if [ "$(pidof php5-fpm)" ]; then
-    info+="\Z2running\Z0"
+  if ! checkInstalled php5-fpm; then
+    info+="\Z1not installed\Z0"
   else
-    info+="\Z1not running\Z0"
+    if [ "$(pidof php5-fpm)" ]; then
+      info+="\Z2running\Z0"
+    else
+      info+="\Z1not running\Z0"
+    fi
+  fi
+  
+  info+=" | mysqld: "
+  if ! checkInstalled mysql-server; then
+    info+="\Z1not installed\Z0"
+  else
+    if [ "$(pidof mysqld)" ]; then
+      info+="\Z2running\Z0"
+    else
+      info+="\Z1not running\Z0"
+    fi
   fi
   
   info+=" | sSmtp: "
@@ -253,13 +384,6 @@ do
     info+="\Z2installed\Z0"
   else
     info+="\Z1not installed\Z0"
-  fi
-  
-  info+=" | mysqld: "
-  if [ "$(pidof mysqld)" ]; then
-    info+="\Z2running\Z0"
-  else
-    info+="\Z1not running\Z0"
   fi
   
   dialog --begin 3 1 --colors --infobox "$info" 3 100 \
