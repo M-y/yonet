@@ -205,7 +205,6 @@ max_connections = 25
 table_cache = 256
 query_cache_limit = 1M
 query_cache_size = 16M
-skip-innodb
 query_cache_min_res_unit=0
 tmp_table_size = 1M
 max_heap_table_size = 1M
