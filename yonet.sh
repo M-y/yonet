@@ -16,7 +16,7 @@
 #
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-version='1.0'
+version='1.1'
 
 if [ ! "`whoami`" = "root" ]
 then
@@ -295,7 +295,7 @@ addHosting() {
 server {
     server_name $wwwHost www.$wwwHost;
     root /home/$wwwUser/www/;
-    index index.php;
+    index index.html index.php;
  
         location = /favicon.ico {
                 log_not_found off;
@@ -319,6 +319,7 @@ server {
     		fastcgi_intercept_errors on;
     		fastcgi_index index.php;
     		fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+		fastcgi_read_timeout 600;
     		try_files \$uri =404;
     		fastcgi_pass unix:/var/run/php5-fpm-$wwwUser.sock;
     		error_page 404 /404page.html;
