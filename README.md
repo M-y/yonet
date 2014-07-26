@@ -21,4 +21,4 @@ Tested on Debian 7
 
     yonet
 
-  [1]: https://dl.dropboxusercontent.com/content_link/AxAbOEN2yCKbhSaWYKdjbOaJSUHYdZyWMWbo1TyQIcLdUAC9NPL3Jtuly9fZiQ2V?dl=1 "Main Menu"
+  [1]: http://drive.google.com/uc?export=view&id=0B7_816X54Xugc1R2dGs5a0NTM2s "Main Menu"
