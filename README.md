@@ -6,12 +6,19 @@ Tested on Debian 7
 
 ![Main Menu][1]
 
+**Features:**
+* Uses nginx as web server, php-fpm as PHP process manager, mysql as database server, ssmtp as send only mail server.
+* Can create and delete users.
+* Can automatically create config files for each user.
+* Can create database for each user and import .sql file.
+* Users can use sftp without having shell access.
+
 **To install:**
 
     wget https://raw.github.com/M-y/yonet/master/install.sh --no-check-certificate -O - -o /dev/null|bash
 
-**To run without install:**
+**After that type this to run anytime:**
 
-    wget https://github.com/M-y/yonet/raw/master/yonet.sh --no-check-certificate -O - -o /dev/null|bash
+    yonet
 
-  [1]: https://lh3.googleusercontent.com/-soEXDvNoSlA/UqI8-vOyGSI/AAAAAAAAABk/B_UMCG1L7AU/s0/yonet.png "Main Menu"
+  [1]: https://dl.dropboxusercontent.com/content_link/AxAbOEN2yCKbhSaWYKdjbOaJSUHYdZyWMWbo1TyQIcLdUAC9NPL3Jtuly9fZiQ2V?dl=1 "Main Menu"
