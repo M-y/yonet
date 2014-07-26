@@ -16,7 +16,7 @@
 #
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-version='1.1'
+version='1.2'
 
 if [ ! "`whoami`" = "root" ]
 then
@@ -90,6 +90,30 @@ sysInfo() {
   echo "Download speed from Softlayer, San Jose, CA: $slsjc "
   slwdc=$( wget -O /dev/null http://speedtest.wdc01.softlayer.com/downloads/test100.zip 2>&1 | awk '/\/dev\/null/ {speed=$3 $4} END {gsub(/\(|\)/,"",speed); print speed}' )
   echo "Download speed from Softlayer, Washington, DC: $slwdc "
+}
+
+#################
+# Software Menu #
+#################
+softwareMenu() {
+  while true
+  do
+    dialog --clear --nocancel --title "Manage server software" \
+    --menu "Enter each menu, install and configure software" 0 0 4 \
+    WWW "Web server" \
+    Sql "Database server" \
+    Mail "Mail server" \
+    Exit "Exit to main menu" 2>"${INPUT}"
+    
+    selected=$(<"${INPUT}")
+    
+    case $selected in
+      WWW) www;;
+      Sql) sql;;
+      Mail) mail;;
+      Exit) clear; break;;
+    esac
+  done
 }
 
 ###############
@@ -248,28 +272,56 @@ END
   done
 }
 
-################
-# Install Menu #
-################
-installServer() {
+#################
+# Accounts Menu #
+#################
+accountsMenu() {
   while true
   do
-    dialog --clear --nocancel --title "Install server software" \
-    --menu "Enter each menu, install and configure software" 0 0 4 \
-    WWW "Web server" \
-    Sql "Database server" \
-    Mail "Mail server" \
+    dialog --clear --nocancel --title "Manage hosting accounts" \
+    --menu "" 0 0 4 \
+    Add "Create a new hosting account" \
+    Delete "Delete an existing hosting account" \
     Exit "Exit to main menu" 2>"${INPUT}"
     
     selected=$(<"${INPUT}")
     
     case $selected in
-      WWW) www;;
-      Sql) sql;;
-      Mail) mail;;
+      Add) addHosting;;
+      Delete) deleteHosting;;
       Exit) clear; break;;
     esac
   done
+}
+
+##################
+# Delete Hosting #
+##################
+deleteHosting () {
+  accounts=$(grep :`grep ^yonet /etc/group | cut -d: -f3`: /etc/passwd | cut -d: -f1 -s | sed ':a;N;$!ba;s/\n/ .\n/g')' .'
+  
+  dialog --clear --title "Select an account to delete" \
+  --menu "This will not delete \n * files in /home directory\n * mysql user(if created)\n * mysql database(if created)" 0 50 10 \
+  ${accounts} 2>"${INPUT}"
+  
+  selected=$(<"${INPUT}")
+  
+  if [ ${#selected} -gt 0 ]
+  then
+    clear
+    
+    deluser ${selected}
+    
+    rm -f "/etc/nginx/sites-enabled/$selected.conf"
+    rm -f "/etc/nginx/sites-available/$selected.conf"
+    rm -f "/etc/php5/fpm/pool.d/$selected.conf"
+    
+    /etc/init.d/php5-fpm restart
+    /etc/init.d/nginx restart
+    
+    echo "Press enter..."
+    read
+  fi
 }
 
 ###################
@@ -282,8 +334,14 @@ addHosting() {
   wwwUser=$(<$OUTPUT)
   
   if [ $respose -eq 0 ]; then
+    dialog --clear --nocancel \
+    --inputbox "Password" 10 40 2>$OUTPUT
+    usrPasswd=$(<$OUTPUT)
+    
     clear
-    adduser $wwwUser
+    addgroup yonet
+    useradd -g yonet -s /usr/lib/openssh/sftp-server -p `openssl passwd -1 $usrPasswd` $wwwUser
+    mkdir "/home/$wwwUser"
     mkdir "/home/$wwwUser/public_html"
     ln -s "/home/$wwwUser/public_html" "/home/$wwwUser/www"
     chown -R $wwwUser:$wwwUser "/home/$wwwUser"
@@ -291,7 +349,7 @@ addHosting() {
     dialog --clear --nocancel \
     --inputbox "Host Name (www prefix will be added automatically)" 10 40 2>$OUTPUT
     wwwHost=$(<$OUTPUT)
-    cat > "/etc/nginx/sites-available/$wwwHost.conf" <<txt
+    cat > "/etc/nginx/sites-available/$wwwUser.conf" <<txt
 server {
     server_name $wwwHost www.$wwwHost;
     root /home/$wwwUser/www/;
@@ -333,24 +391,31 @@ server {
     error_log  /var/log/nginx/$wwwHost-error.log;    
 }
 txt
-  ln -s /etc/nginx/sites-available/$wwwHost.conf /etc/nginx/sites-enabled/$wwwHost.conf
-    
-  cat > /etc/php5/fpm/pool.d/$wwwUser.conf <<txt
+  ln -s "/etc/nginx/sites-available/$wwwUser.conf" "/etc/nginx/sites-enabled/$wwwUser.conf"
+  
+  cores=$( awk -F: '/model name/ {core++} END {print core}' /proc/cpuinfo )
+  
+  cat > "/etc/php5/fpm/pool.d/$wwwUser.conf" <<txt
 [$wwwUser]
 user = $wwwUser
-group = $wwwUser
+group = yonet
 listen = /var/run/php5-fpm-$wwwUser.sock
 listen.owner = www-data
 listen.group = www-data
 listen.mode = 0666
+listen.allowed_clients = 127.0.0.1
 pm = dynamic
-pm.max_children = 5
-pm.start_servers = 2
+pm.max_children = $cores
+pm.start_servers = 1
 pm.min_spare_servers = 1
-pm.max_spare_servers = 3
-pm.max_requests = 200
+pm.max_spare_servers = 1
+pm.max_requests = 500
 txt
-    
+  
+  unset mysqlRootPass
+  unset databaseName
+  unset username
+  unset password
   dialog --yesno "Do you want to create a database for this user?" 7 40
   if [ $? -eq 0 ]; then
     dialog --nocancel --inputbox "MySql root password" 10 40 2>$OUTPUT
@@ -386,6 +451,23 @@ txt
   fi
   
   echo "Press enter..."
+  read
+  
+  serverIP=$(ifconfig | sed -En 's/127.0.0.1//;s/.*inet (addr:)?(([0-9]*\.){3}[0-9]*).*/\2/p')
+  successMessage="----------[ New account information ]----------
+IP: $serverIP
+Hostname: $wwwHost
+
+[sftp login]
+User name: $wwwUser
+Password: $usrPasswd
+
+[mysql login]
+Database: $databaseName
+User name: $username
+Password: $password
+"
+  dialog --infobox "$successMessage" 30 100
   read
 }
 
@@ -440,16 +522,16 @@ do
   dialog --begin 3 1 --colors --infobox "$info" 3 100 \
   --and-widget --begin 8 20 --keep-window --nocancel --title "Main Menu" --backtitle "Yönet $version" \
   --menu "" 0 0 5 \
-  Install "Install server software" \
-  Add "Create a new hosting account" \
+  Software "Manage server software" \
+  Accounts "Manage Hosting Accounts" \
   Info "System Info" \
   Exit "Exit" 2>"${INPUT}"
  
   selected=$(<"${INPUT}")
   
   case $selected in
-    Install) installServer;;
-    Add) addHosting;;
+    Software) softwareMenu;;
+    Accounts) accountsMenu;;
     Info) sysInfo | dialog --programbox 30 100;;
     Exit) clear; break;;
   esac
