@@ -344,7 +344,7 @@ addHosting() {
     mkdir "/home/$wwwUser"
     mkdir "/home/$wwwUser/public_html"
     ln -s "/home/$wwwUser/public_html" "/home/$wwwUser/www"
-    chown -R $wwwUser:$wwwUser "/home/$wwwUser"
+    chown -R $wwwUser:yonet "/home/$wwwUser"
     
     dialog --clear --nocancel \
     --inputbox "Host Name (www prefix will be added automatically)" 10 40 2>$OUTPUT
